@@ -1266,38 +1266,27 @@ def add_footer_to_bundle(input_file, page_numbers_pdf_path, output_file):
     Given an input file (a series of pdfs merged together) and
     a pdf of equal length containing only the page number footers,
     this combines the two by overlaying footers on top of the input file.
-    It scales the footer according to horizontal scaling factor (an imperfect
-    solution to a difficult problem)
+    
+    Uses pikepdf for the overlay operation as pypdf has issues with
+    certain PDF structures when merging pages (TypeError with NameObject/IndirectObject).
     '''
-    # CONVERSION NOTE: PDF points are 1/72 inch by standard.
-    # the scaling factor between point and mm is 2.8346...
-    # a4 paper (which I've chosen for the reference page numbering) is 210mm x 297mm = 595 x 842 points
-    # height isn't such an issue, but width is or we'll overflow.
-    a4_width = 595
     try:
-        # Load the input PDF and the page numbers PDF
-        input_pdf = PdfReader(input_file)
-        page_numbers_pdf = PdfReader(page_numbers_pdf_path)
+        # Load the input PDF and the page numbers PDF using pikepdf
+        input_pdf = Pdf.open(input_file)
+        page_numbers_pdf = Pdf.open(page_numbers_pdf_path)
 
         # Ensure the number of pages match
         if len(input_pdf.pages) != len(page_numbers_pdf.pages):
             raise ValueError(
-                f"Page counts of input_file and page_numbers_pdf_path do not match: input =  {len(input_pdf.pages)} vs page numbers: {len(page_numbers_pdf.pages)}")
-
-        # Create a writer for the output PDF
-        writer = PdfWriter()
+                f"Page counts of input_file and page_numbers_pdf_path do not match: input = {len(input_pdf.pages)} vs page numbers: {len(page_numbers_pdf.pages)}")
 
         # Overlay page numbers PDF pages onto input PDF pages
         for input_page, overlay_page in zip(input_pdf.pages, page_numbers_pdf.pages):
-            # The content is `input_page`, the footer is `overlay_page`.
-            # We merge the footer ONTO the content page, scaling it to match the width.
-            scaling_factor = float(input_page.mediabox.width / overlay_page.mediabox.width)
-            input_page.merge_scaled_page(overlay_page, scaling_factor)
-            writer.add_page(input_page)
+            # pikepdf's add_overlay handles the merging cleanly
+            input_page.add_overlay(overlay_page)
 
-        # Write the resulting PDF to the output file
-        with open(output_file, "wb") as f:
-            writer.write(f)
+        # Save the result
+        input_pdf.save(output_file)
     except Exception as e:
         bundle_logger.error(f"[OPN]Error overlaying page numbers: {e}")
         raise e
