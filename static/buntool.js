@@ -108,6 +108,7 @@ async function handleFiles(files) {
     if (successful_uploads > 0) {
         showMessage(`${successful_uploads} files uploaded successfully.`);
         document.getElementById('file-table').style.display = 'block'; // Make file-table visible
+        sortTableByFilename(); // Auto-sort by filename after upload
     }
     if (unsuccessful_uploads > 0)
         showError(`${unsuccessful_uploads} files failed to upload.`);
@@ -438,6 +439,20 @@ function parseDateFromFilename(filename, title) {
 
     console.log("No date found, returning:", { date: null, titleWithoutDate });
     return { date: null, titleWithoutDate };
+}
+
+function sortTableByFilename() {
+    // Auto-sort non-section rows by filename (column index 1) ascending
+    const table = document.getElementById('fileList');
+    const rows = Array.from(table.getElementsByTagName('tr'));
+    const sortedRows = rows.sort((a, b) => {
+        if (a.classList.contains('section-row')) return -1;
+        if (b.classList.contains('section-row')) return 1;
+        const aValue = a.getElementsByTagName('td')[1]?.textContent || '';
+        const bValue = b.getElementsByTagName('td')[1]?.textContent || '';
+        return aValue.localeCompare(bValue);
+    });
+    sortedRows.forEach(row => table.appendChild(row));
 }
 
 function sortTable(columnIndex) {
