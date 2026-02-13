@@ -110,6 +110,49 @@ sudo dnf install libreoffice
 
 BunTool detects LibreOffice automatically at startup. If it is not found, a warning is displayed in the terminal and users uploading DOCX files will see a warning in the browser. Images (PNG, JPG, etc.) do not require LibreOffice — they are converted accurately using Pillow and ReportLab.
 
+### AI Features (Optional)
+
+BunTool has optional AI-powered features that can suggest section groupings and clean document names for your bundle. These require an API key from one of the supported providers:
+
+| Provider | Package | Free Tier | Notes |
+|----------|---------|-----------|-------|
+| **Google Gemini** | `google-genai` | Yes — generous free tier | Recommended for trying out AI features at no cost |
+| **OpenAI** | `openai` | No | GPT-4o-mini is fast and affordable |
+| **Anthropic** | `anthropic` | No | Claude Sonnet for high-quality suggestions |
+
+**Setup:**
+
+1. Install the package for your chosen provider:
+   ```bash
+   pip install google-genai   # or: pip install openai / pip install anthropic
+   ```
+
+2. Copy the example config and add your API key:
+   ```bash
+   cp ai_config.example.json ai_config.json
+   ```
+
+3. Edit `ai_config.json`:
+   ```json
+   {
+     "provider": "google",
+     "api_key": "your-api-key-here",
+     "model": ""
+   }
+   ```
+   Valid providers: `openai`, `anthropic`, `google`. Leave `model` empty to use the default for each provider.
+
+4. Restart the server. You should see `AI features enabled: google (gemini-2.0-flash)` in the terminal.
+
+The AI buttons appear in Step 2 when configured. If AI is not configured, the tool works exactly as before — no functionality is lost.
+
+You can also configure via environment variables instead of the config file:
+```bash
+export BUNTOOL_AI_PROVIDER=google
+export BUNTOOL_AI_API_KEY=your-key-here
+export BUNTOOL_AI_MODEL=gemini-2.0-flash
+```
+
 ### Installation Steps
 
 1. **Clone the repository**
