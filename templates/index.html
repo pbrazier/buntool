@@ -112,6 +112,18 @@
                         <i class="mdi mdi-delete"></i> Clear All Rows
                     </button>
                     </div>
+                <div id="aiButtonGroup" class="button-group" style="padding-top: 0.5rem; display: none;">
+                    <button type="button" class="secondary" id="aiCategoriseBtn" onclick="aiCategorise()" style="background-color: #7c3aed; color: white; border-color: #7c3aed;">
+                        <i class="mdi mdi-brain"></i> AI: Suggest Sections
+                    </button>
+                    <button type="button" class="secondary" id="aiRenameBtn" onclick="aiRename()" style="background-color: #7c3aed; color: white; border-color: #7c3aed;">
+                        <i class="mdi mdi-brain"></i> AI: Suggest Names
+                    </button>
+                    <span id="aiProviderLabel" style="font-size: 0.75rem; color: #888; align-self: center;"></span>
+                </div>
+                <div id="aiNotConfigured" style="display: none; padding-top: 0.5rem; font-size: 0.85rem; color: #888;">
+                    <i class="mdi mdi-brain" style="color: #ccc;"></i> AI features available — configure <code>ai_config.json</code> to enable. See <a href="https://github.com/TrisSherliker/buntool#ai-features-optional" style="color: #7c3aed;">README</a> for setup.
+                </div>
 
                 <table>
                     <thead>

@@ -22,3 +22,6 @@ memory-bank/
 
 # macOS
 .DS_Store
+
+# AI configuration (contains API keys)
+ai_config.json

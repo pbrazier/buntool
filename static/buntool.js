@@ -90,6 +90,16 @@ fetch('/capabilities')
             fileInput.accept = '.pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp';
             formatsText.textContent = 'Supports PDF and images (PNG, JPG, GIF, BMP, TIFF, WEBP). Word documents require LibreOffice on the server.';
         }
+        // AI feature visibility
+        if (data.ai_available) {
+            document.getElementById('aiButtonGroup').style.display = 'flex';
+            const label = document.getElementById('aiProviderLabel');
+            if (data.ai_provider) {
+                label.textContent = `Using ${data.ai_provider.provider} (${data.ai_provider.model})`;
+            }
+        } else {
+            document.getElementById('aiNotConfigured').style.display = 'block';
+        }
     })
     .catch(() => {
         OFFICE_EXTENSIONS = [];
@@ -568,4 +578,160 @@ function sortTable(columnIndex) {
 
     // Reorder the table
     sortedRows.forEach(row => table.appendChild(row));
+}
+
+
+// ==================== AI Features ====================
+
+function getFileListForAI() {
+    const rows = fileList.querySelectorAll('tr:not(.section-row)');
+    const files = [];
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 4) {
+            const originalName = cells[1].getAttribute('data-original-name');
+            const sanitizedName = filenameMappings.get(originalName) || originalName;
+            const title = cells[2].querySelector('input')?.value.trim() || '';
+            files.push({ filename: sanitizedName, title: title });
+        }
+    });
+    return files;
+}
+
+function setAIButtonsLoading(loading) {
+    const catBtn = document.getElementById('aiCategoriseBtn');
+    const renBtn = document.getElementById('aiRenameBtn');
+    if (loading) {
+        catBtn.disabled = true;
+        renBtn.disabled = true;
+        catBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Thinking...';
+        renBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Thinking...';
+    } else {
+        catBtn.disabled = false;
+        renBtn.disabled = false;
+        catBtn.innerHTML = '<i class="mdi mdi-brain"></i> AI: Suggest Sections';
+        renBtn.innerHTML = '<i class="mdi mdi-brain"></i> AI: Suggest Names';
+    }
+}
+
+async function aiCategorise() {
+    const files = getFileListForAI();
+    if (files.length === 0) {
+        showError('Upload some files first before using AI categorisation.');
+        return;
+    }
+
+    setAIButtonsLoading(true);
+    try {
+        const response = await fetch('/ai/categorise', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: files })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'AI request failed');
+        }
+        applyAISections(result.data);
+        showMessage('AI section suggestions applied. Review and adjust as needed.');
+    } catch (error) {
+        showError(`AI categorisation failed: ${error.message}`);
+    } finally {
+        setAIButtonsLoading(false);
+    }
+}
+
+function applyAISections(data) {
+    if (!data || !data.sections) return;
+
+    // Remove existing section rows
+    fileList.querySelectorAll('tr.section-row').forEach(row => row.remove());
+
+    // Collect all file rows into a lookup by sanitized filename
+    const fileRows = {};
+    fileList.querySelectorAll('tr:not(.section-row)').forEach(row => {
+        const originalName = row.querySelector('td[data-original-name]')?.dataset.originalName;
+        const sanitizedName = filenameMappings.get(originalName) || originalName;
+        if (sanitizedName) fileRows[sanitizedName] = row;
+    });
+
+    // Clear the table and rebuild in section order
+    fileList.innerHTML = '';
+    const placed = new Set();
+
+    data.sections.forEach(section => {
+        // Add section header row
+        const sectionRow = document.createElement('tr');
+        sectionRow.className = 'section-row';
+        sectionRow.innerHTML = `
+            <td><div class="drag-handle"><span style="background-color: #68b3cd; color: white; padding: 0.2rem 0.5rem; border-radius: 0.3rem;">☰</span></div></td>
+            <td colspan="4"><input type="text" value="${section.name}" class="w-full"></td>
+            <td><button type="button" class="remove-button" onclick="this.closest('tr').remove()">❌</button></td>
+        `;
+        fileList.appendChild(sectionRow);
+
+        // Add file rows for this section
+        (section.files || []).forEach(filename => {
+            const row = fileRows[filename];
+            if (row) {
+                fileList.appendChild(row);
+                placed.add(filename);
+            }
+        });
+    });
+
+    // Append any files that weren't placed by the AI
+    Object.entries(fileRows).forEach(([name, row]) => {
+        if (!placed.has(name)) {
+            fileList.appendChild(row);
+        }
+    });
+}
+
+async function aiRename() {
+    const files = getFileListForAI();
+    if (files.length === 0) {
+        showError('Upload some files first before using AI renaming.');
+        return;
+    }
+
+    setAIButtonsLoading(true);
+    try {
+        const response = await fetch('/ai/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: files })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'AI request failed');
+        }
+        applyAIRenames(result.data);
+        showMessage('AI name suggestions applied to title fields. Review and adjust as needed.');
+    } catch (error) {
+        showError(`AI rename failed: ${error.message}`);
+    } finally {
+        setAIButtonsLoading(false);
+    }
+}
+
+function applyAIRenames(data) {
+    if (!data || !data.suggestions) return;
+
+    // Build a lookup from original filename to suggested name
+    const suggestions = {};
+    data.suggestions.forEach(s => {
+        suggestions[s.original] = s.suggested;
+    });
+
+    // Apply to table rows
+    fileList.querySelectorAll('tr:not(.section-row)').forEach(row => {
+        const originalName = row.querySelector('td[data-original-name]')?.dataset.originalName;
+        const sanitizedName = filenameMappings.get(originalName) || originalName;
+        const suggested = suggestions[sanitizedName];
+        if (suggested) {
+            const titleInput = row.querySelectorAll('td')[2]?.querySelector('input');
+            if (titleInput) titleInput.value = suggested;
+        }
+    });
 }

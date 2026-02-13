@@ -4,6 +4,9 @@ import os
 # import sys
 import bundle as buntool
 import convert as converter
+from ai.provider import is_ai_configured, get_ai_provider_info
+from ai.complete import complete as ai_complete
+from ai.prompts import CATEGORISE_SYSTEM, CATEGORISE_USER, RENAME_SYSTEM, RENAME_USER
 import shutil
 import logging
 import tempfile
@@ -16,7 +19,7 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # file size limit in MB
 app.logger.setLevel(logging.DEBUG)
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 
 # s3 = boto3.client('s3')
 # bucket_name = os.environ.get('s3_bucket', 'your-default-bucket')
@@ -150,8 +153,44 @@ def capabilities():
         supported += list(converter.OFFICE_EXTENSIONS)
     return jsonify({
         "supported_extensions": sorted(supported),
-        "libreoffice_available": converter.has_libreoffice()
+        "libreoffice_available": converter.has_libreoffice(),
+        "ai_available": is_ai_configured(),
+        "ai_provider": get_ai_provider_info()
     })
+
+
+@app.route('/ai/categorise', methods=['POST'])
+def ai_categorise():
+    """Use AI to suggest section groupings for uploaded files."""
+    if not is_ai_configured():
+        return jsonify({"status": "error", "message": "AI features are not configured."}), 400
+    data = request.get_json()
+    if not data or 'files' not in data:
+        return jsonify({"status": "error", "message": "No file list provided."}), 400
+    try:
+        file_list = "\n".join(f"- {f['filename']} (title: {f.get('title', '')})" for f in data['files'])
+        result = ai_complete(CATEGORISE_SYSTEM, CATEGORISE_USER.format(file_list=file_list))
+        return jsonify({"status": "success", "data": result})
+    except Exception as e:
+        app.logger.error(f"AI categorise error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/ai/rename', methods=['POST'])
+def ai_rename():
+    """Use AI to suggest clean structured names for uploaded files."""
+    if not is_ai_configured():
+        return jsonify({"status": "error", "message": "AI features are not configured."}), 400
+    data = request.get_json()
+    if not data or 'files' not in data:
+        return jsonify({"status": "error", "message": "No file list provided."}), 400
+    try:
+        file_list = "\n".join(f"- {f['filename']}" for f in data['files'])
+        result = ai_complete(RENAME_SYSTEM, RENAME_USER.format(file_list=file_list))
+        return jsonify({"status": "success", "data": result})
+    except Exception as e:
+        app.logger.error(f"AI rename error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/convert', methods=['POST'])
@@ -462,4 +501,9 @@ if __name__ == '__main__':
     else:
         app.logger.warning("LibreOffice NOT found. DOCX conversion will use text-extraction fallback (not faithful). "
                            "Install LibreOffice for accurate document conversion: brew install --cask libreoffice")
+    if is_ai_configured():
+        info = get_ai_provider_info()
+        app.logger.info(f"AI features enabled: {info['provider']} ({info['model']})")
+    else:
+        app.logger.info("AI features not configured. To enable, create ai_config.json (see ai_config.example.json).")
     serve(app, host='0.0.0.0', port=7001, threads=4, connection_limit=100, channel_timeout=120)
