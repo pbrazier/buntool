@@ -4,7 +4,7 @@ BunTool is a legal tool. Any file conversion must produce output that is a faith
 
 ## Core principle
 
-Converted output must be legally defensible as an accurate reproduction of the source file. If a conversion method cannot guarantee this, the tool must either warn the user clearly or refuse the conversion.
+Converted output must be legally defensible as an accurate reproduction of the source file. If a conversion method cannot guarantee this, the feature must be disabled entirely — not offered with a degraded fallback.
 
 ## Image conversion
 
@@ -14,13 +14,15 @@ Converted output must be legally defensible as an accurate reproduction of the s
 
 ## Document conversion (DOCX, etc.)
 
-- Pure-Python DOCX-to-PDF conversion (e.g. re-rendering via reportlab) is NOT faithful. It loses tables, images, precise formatting, headers/footers, and layout. This is not acceptable for legal use.
-- DOCX conversion must carry a clear warning in the UI that the output is a best-effort text extraction and the user should verify accuracy or convert externally for guaranteed fidelity.
-- If LibreOffice or another high-fidelity converter becomes available on the server, prefer that over the text-extraction approach.
+- DOCX conversion requires LibreOffice (headless mode). There is no fallback.
+- If LibreOffice is not installed, DOCX uploads are disabled in the UI via the `/capabilities` endpoint.
+- The frontend checks `/capabilities` on page load and only offers DOCX if the server confirms LibreOffice is available.
+- Never offer a lossy text-extraction conversion as a fallback. If we can't do it faithfully, we don't do it.
 
 ## General rules
 
 - All converted pages must be A4 portrait.
 - The conversion module is `convert.py`. Keep all conversion logic there.
 - The `/convert` endpoint in `app.py` handles single-file conversion requests from the frontend.
-- Never silently degrade quality. If there is any risk of content loss, warn the user.
+- The `/capabilities` endpoint reports which file types the server can handle.
+- Never silently degrade quality. If there is any risk of content loss, disable the feature.
