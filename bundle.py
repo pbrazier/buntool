@@ -891,6 +891,32 @@ def reportlab_footer_config(canvas, doc):
     footer_frame.hAlign = "RIGHT"
     footer_frame.add(Paragraph(footer_data, footer_style), canvas)
 
+    # Draw filename header if enabled
+    if bundle_config.header_filename and bundle_config.page_to_filename:
+        current_page = canvas.getPageNumber()  # 1-based within the overlay PDF
+        header_text = bundle_config.page_to_filename.get(current_page, "")
+        if header_text:
+            header_font_size = 8
+            header_font_name = footer_font  # match the footer font choice
+            header_style = ParagraphStyle(
+                'HeaderText',
+                fontSize=header_font_size,
+                fontName=header_font_name,
+                textColor=colors.Color(0.4, 0.4, 0.4),
+                alignment=TA_LEFT
+            )
+            header_frame = Frame(
+                0, PAGE_HEIGHT - 1.2 * cm,
+                PAGE_WIDTH, 1.0 * cm,
+                leftPadding=50,
+                bottomPadding=0,
+                rightPadding=50,
+                topPadding=0,
+                id="headerframe",
+                showBoundary=0
+            )
+            header_frame.add(Paragraph(header_text, header_style), canvas)
+
 
 def create_toc_pdf_tex(toc_entries, casedetails, output_file, confidential=False, date_setting=True,
                        index_font_setting=None, dummy=False, frontmatter_offset=0, length_of_coversheet=0,
@@ -1615,7 +1641,8 @@ def add_hyperlinks(
 class BundleConfig:
     def __init__(self, timestamp, case_details, csv_string, confidential_bool, zip_bool, session_id, user_agent,
                  page_num_align, index_font, footer_font, page_num_style, footer_prefix, date_setting,
-                 roman_for_preface, expected_length_of_frontmatter=0, main_page_count=0, temp_dir=None, logs_dir=None, bookmark_setting="uk_abbreviated"):
+                 roman_for_preface, expected_length_of_frontmatter=0, main_page_count=0, temp_dir=None, logs_dir=None,
+                 bookmark_setting="uk_abbreviated", header_filename=False):
         self.timestamp = timestamp if timestamp else datetime.now().strftime("%Y-%m-%d-%H%M%S")
         self.case_details = case_details
         self.csv_string = csv_string if csv_string else None
@@ -1637,6 +1664,8 @@ class BundleConfig:
         self.temp_dir = temp_dir if temp_dir else os.path.join(base_temp, 'buntool', 'tempfiles', self.session_id)
         self.logs_dir = logs_dir if logs_dir else os.path.join(base_temp, 'buntool', 'logs', self.session_id)
         self.bookmark_setting = bookmark_setting if bookmark_setting else "uk_abbreviated"
+        self.header_filename = header_filename if header_filename else False
+        self.page_to_filename = {}  # populated during bundle creation from toc_entries
 
 def create_bundle(input_files, output_file, coversheet, index_file, bundle_config_data):
     '''
@@ -1706,6 +1735,25 @@ def create_bundle(input_files, output_file, coversheet, index_file, bundle_confi
         except Exception as e:
             bundle_logger.error(f"[CB]Error while merging pdf files: {e}")
             raise e
+
+        # Build page-to-filename mapping for headers (if enabled)
+        if bundle_config.header_filename:
+            page_to_filename = {}
+            # toc_entries are tuples: (tab_number, title, date, start_page) for files,
+            # or (section_marker, title) for sections
+            file_entries = [e for e in toc_entries if len(e) == 4]
+            for i, entry in enumerate(file_entries):
+                tab_num, title, date, start_page = entry
+                # Determine end page: either next file's start page or total page count
+                if i + 1 < len(file_entries):
+                    end_page = file_entries[i + 1][3]
+                else:
+                    end_page = None  # will be set after we know main_page_count
+                # Store as (title, start_page, end_page) temporarily
+                file_entries[i] = (title, start_page, end_page)
+            # We'll finalize the mapping after main_page_count is known
+            bundle_config._header_file_entries = file_entries
+            bundle_logger.debug(f"[CB]Header filename mapping prepared for {len(file_entries)} documents")
         if not os.path.exists(merged_file):
             bundle_logger.info(f"[CB]Merging file unsuccessful: cannot locate expected ouput {merged_file}.")
             return
@@ -1751,6 +1799,18 @@ def create_bundle(input_files, output_file, coversheet, index_file, bundle_confi
         with Pdf.open(merged_file) as mergedfile:
             main_page_count = len(mergedfile.pages)
         bundle_config.main_page_count = main_page_count  # main page count for x of y pagination if needed
+
+        # Finalize page-to-filename mapping for headers
+        if bundle_config.header_filename and hasattr(bundle_config, '_header_file_entries'):
+            page_to_filename = {}
+            for title, start_page, end_page in bundle_config._header_file_entries:
+                if end_page is None:
+                    end_page = main_page_count
+                # Pages are 0-based in toc_entries, but 1-based in the overlay PDF
+                for pg in range(start_page, end_page):
+                    page_to_filename[pg + 1] = title  # +1 for 1-based page numbering
+            bundle_config.page_to_filename = page_to_filename
+            bundle_logger.debug(f"[CB]Header filename mapping finalized: {len(page_to_filename)} pages mapped")
 
         # Find length of frontmatter to allow for pagination from page 1 (no roman numbering)
         if coversheet and os.path.exists(coversheet_path):

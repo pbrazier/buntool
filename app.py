@@ -16,7 +16,7 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # file size limit in MB
 app.logger.setLevel(logging.DEBUG)
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 # s3 = boto3.client('s3')
 # bucket_name = os.environ.get('s3_bucket', 'your-default-bucket')
@@ -247,6 +247,7 @@ def create_bundle():
         case_details = [bundle_title, claim_no, case_name]
         zip_bool = True  # option not implemented for GUI control.
         bookmark_setting = request.form.get('bookmark_setting')
+        header_filename = bool(strtobool(request.form.get('header_filename', 'false')))
 
         output_file = get_output_filename(bundle_title, case_name, timestamp, footer_prefix)
         app.logger.debug(f"generated output filename: {output_file}")
@@ -356,7 +357,8 @@ def create_bundle():
                 roman_for_preface=roman_for_preface,
                 temp_dir=temp_dir,
                 logs_dir=logs_dir,
-                bookmark_setting=bookmark_setting
+                bookmark_setting=bookmark_setting,
+                header_filename=header_filename
             )
 
             received_output_file, zip_file_path = buntool.create_bundle(
