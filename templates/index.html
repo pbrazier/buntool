@@ -34,7 +34,7 @@
         <div class="intro-section" style="background-color: #f8fcff; padding: 1rem; text-align: left;">
             <h2> Welcome to BunTool! </h2>
             <p> 
-                BunTool is a simple tool for creating PDF bundles from several PDF files. 
+                BunTool is a simple tool for creating PDF bundles from several files. 
             </p>
             <p>
                 Written by a lawyer for use in court, it's perfect for 
@@ -42,7 +42,7 @@
                 The default settings comply with the guidance for most courts, but there are lots of options to customise the output. 
             </p>
             <p>
-                Just enter the details, upload your files, choose any options, and click "Create Bundle" below. The PDFs will be combined,  
+                Just enter the details, upload your files, choose any options, and click "Create Bundle" below. PDFs are added directly, and images or Word documents are automatically converted.  
             </p>
         </div>
 
@@ -89,10 +89,11 @@
 
                 <div id="dropZone" class="upload-zone" style="display: block;">
                     <i class="mdi mdi-upload upload-icon" style="color: #d57782;"></i>
-                    <p><span style="color: #d57782; font-size: 1.2rem;"><b>Upload your PDFs here:</b> Click to select,
+                    <p><span style="color: #d57782; font-size: 1.2rem;"><b>Upload your files here:</b> Click to select,
                             or
                             drag and drop</p></span>
-                    <input type="file" id="fileInput" name="files" multiple accept=".pdf" style="display: block;">
+                    <p id="supportedFormatsText" style="font-size: 0.85rem; color: #888;">Supports PDF and images (PNG, JPG, GIF, BMP, TIFF, WEBP). Non-PDF files will be converted automatically.</p>
+                    <input type="file" id="fileInput" name="files" multiple accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp" style="display: block;">
                 </div>
                 <div class="progress-container">
                     <div class="progress-bar"></div>
@@ -392,7 +393,7 @@
 
     <footer style="background-color: #f8fafc; padding: 1rem; text-align: center;">
         <p style="color: #6b7280; font-size: 0.875rem;">&copy; 2025 Tristan Sherliker</p>
-        <p style="color: #6b7280; font-size: 0.875rem;">BunTool is an early development tool and is constantly being improved. If you want to get in touch, need help or have ideas for how to improve it, please contact <a href="mailto:tris@sherliker.net">tris@sherliker.net</a></p>
+        <p style="color: #6b7280; font-size: 0.875rem;">BunTool v{{ version }} — an early development tool, constantly being improved. If you want to get in touch, need help or have ideas for how to improve it, please contact <a href="mailto:tris@sherliker.net">tris@sherliker.net</a></p>
         </div>
 </body>
 </html>

@@ -3,6 +3,7 @@ from werkzeug.utils import secure_filename
 import os
 # import sys
 import bundle as buntool
+import convert as converter
 import shutil
 import logging
 import tempfile
@@ -14,6 +15,8 @@ import csv
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # file size limit in MB
 app.logger.setLevel(logging.DEBUG)
+
+APP_VERSION = "1.2.0"
 
 # s3 = boto3.client('s3')
 # bucket_name = os.environ.get('s3_bucket', 'your-default-bucket')
@@ -136,7 +139,56 @@ def synchronise_csv_index(uploaded_csv_path, filename_mappings):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', version=APP_VERSION)
+
+
+@app.route('/capabilities', methods=['GET'])
+def capabilities():
+    """Return what file types the server can handle, based on available tools."""
+    supported = ['.pdf'] + list(converter.IMAGE_EXTENSIONS)
+    if converter.has_libreoffice():
+        supported += list(converter.OFFICE_EXTENSIONS)
+    return jsonify({
+        "supported_extensions": sorted(supported),
+        "libreoffice_available": converter.has_libreoffice()
+    })
+
+
+@app.route('/convert', methods=['POST'])
+def convert_file():
+    """Convert an uploaded non-PDF file to PDF and return it."""
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file provided"}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"status": "error", "message": "No filename"}), 400
+
+    if not converter.is_convertible(file.filename):
+        return jsonify({"status": "error", "message": f"Unsupported file type: {file.filename}"}), 400
+
+    try:
+        # Create a temp directory for this conversion
+        import tempfile as tf
+        conv_dir = tf.mkdtemp(prefix='buntool_conv_')
+        secure_name = secure_filename(file.filename)
+        input_path = os.path.join(conv_dir, secure_name)
+        file.save(input_path)
+
+        output_pdf_path = converter.convert_to_pdf(input_path, conv_dir)
+        response = send_file(output_pdf_path, mimetype='application/pdf',
+                             as_attachment=True,
+                             download_name=os.path.splitext(secure_name)[0] + '.pdf')
+
+        # Flag if this was a lossy fallback conversion
+        ext = converter.get_file_extension(file.filename)
+        if ext in converter.OFFICE_EXTENSIONS and not converter.has_libreoffice():
+            response.headers['X-Conversion-Warning'] = 'fallback'
+
+        return response
+    except Exception as e:
+        app.logger.error(f"Conversion error: {str(e)}")
+        return jsonify({"status": "error", "message": f"Conversion failed: {str(e)}"}), 500
 
 
 @app.route('/create_bundle', methods=['GET', 'POST'])
@@ -402,5 +454,10 @@ def download_zip():
 
 
 if __name__ == '__main__':
-    app.logger.debug(f"APP - Server started on port 7001 -- Hello.")
+    app.logger.debug(f"APP - BunTool v{APP_VERSION} - Server started on port 7001")
+    if converter.has_libreoffice():
+        app.logger.info(f"LibreOffice found at: {converter.LIBREOFFICE_PATH} — full document conversion enabled.")
+    else:
+        app.logger.warning("LibreOffice NOT found. DOCX conversion will use text-extraction fallback (not faithful). "
+                           "Install LibreOffice for accurate document conversion: brew install --cask libreoffice")
     serve(app, host='0.0.0.0', port=7001, threads=4, connection_limit=100, channel_timeout=120)

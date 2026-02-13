@@ -89,6 +89,26 @@ The result is a professional bundle that would typically take hours to create ma
 - Python 3.8 or higher
 - pip (Python package manager)
 - Virtual environment support
+- **LibreOffice** (strongly recommended for DOCX conversion — see below)
+
+### LibreOffice (Recommended)
+
+BunTool can accept Word documents (.docx) and convert them to PDF for inclusion in bundles. For this conversion to be faithful and legally reliable, LibreOffice must be installed on the server. Without it, DOCX files are converted using basic text extraction which loses formatting, tables, images, and layout — this is not suitable for legal use.
+
+Install LibreOffice:
+
+```bash
+# macOS
+brew install --cask libreoffice
+
+# Ubuntu / Debian
+sudo apt install libreoffice
+
+# Fedora / RHEL
+sudo dnf install libreoffice
+```
+
+BunTool detects LibreOffice automatically at startup. If it is not found, a warning is displayed in the terminal and users uploading DOCX files will see a warning in the browser. Images (PNG, JPG, etc.) do not require LibreOffice — they are converted accurately using Pillow and ReportLab.
 
 ### Installation Steps
 

@@ -108,6 +108,28 @@ echo -n "Checking required directories... "
 mkdir -p logs tempfiles
 echo -e "${GREEN}OK${NC}"
 
+# Check for LibreOffice (required for faithful DOCX-to-PDF conversion)
+echo -n "Checking LibreOffice... "
+if command -v libreoffice &> /dev/null; then
+    LO_VERSION=$(libreoffice --version 2>/dev/null | head -1)
+    echo -e "${GREEN}OK${NC} ($LO_VERSION)"
+elif command -v soffice &> /dev/null; then
+    LO_VERSION=$(soffice --version 2>/dev/null | head -1)
+    echo -e "${GREEN}OK${NC} ($LO_VERSION)"
+elif [ -f "/Applications/LibreOffice.app/Contents/MacOS/soffice" ]; then
+    LO_VERSION=$(/Applications/LibreOffice.app/Contents/MacOS/soffice --version 2>/dev/null | head -1)
+    echo -e "${GREEN}OK${NC} ($LO_VERSION)"
+else
+    echo -e "${YELLOW}NOT FOUND${NC}"
+    echo -e "${YELLOW}Warning: LibreOffice is not installed. DOCX files will be converted using"
+    echo -e "text extraction only, which may not faithfully reproduce the original document."
+    echo -e "For accurate document conversion, install LibreOffice:${NC}"
+    echo -e "  macOS:   brew install --cask libreoffice"
+    echo -e "  Ubuntu:  sudo apt install libreoffice"
+    echo -e "  Fedora:  sudo dnf install libreoffice"
+    echo ""
+fi
+
 # Check if port 7001 is available
 echo -n "Checking port 7001... "
 if lsof -Pi :7001 -sTCP:LISTEN -t >/dev/null 2>&1; then

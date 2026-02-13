@@ -69,6 +69,64 @@ function getUniqueFilename(basename, extension, usedNames) {
     return candidate;
 }
 
+// Supported file types (defaults — updated dynamically from server capabilities)
+const PDF_TYPES = ['application/pdf'];
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/bmp', 'image/tiff', 'image/webp'];
+let OFFICE_EXTENSIONS = []; // Populated from server if LibreOffice is available
+
+// Check server capabilities on load
+fetch('/capabilities')
+    .then(r => r.json())
+    .then(data => {
+        const formatsText = document.getElementById('supportedFormatsText');
+        if (data.libreoffice_available) {
+            OFFICE_EXTENSIONS = ['.docx'];
+            fileInput.accept = '.pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp,.docx';
+            formatsText.textContent = 'Supports PDF, images (PNG, JPG, GIF, BMP, TIFF, WEBP) and Word documents (DOCX). Non-PDF files will be converted automatically.';
+        } else {
+            OFFICE_EXTENSIONS = [];
+            fileInput.accept = '.pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp';
+            formatsText.textContent = 'Supports PDF and images (PNG, JPG, GIF, BMP, TIFF, WEBP). Word documents require LibreOffice on the server.';
+        }
+    })
+    .catch(() => {
+        OFFICE_EXTENSIONS = [];
+        fileInput.accept = '.pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp';
+    });
+
+function getFileExtension(filename) {
+    return filename.slice(filename.lastIndexOf('.')).toLowerCase();
+}
+
+function isSupportedFile(file) {
+    if (PDF_TYPES.includes(file.type)) return true;
+    if (IMAGE_TYPES.includes(file.type)) return true;
+    const ext = getFileExtension(file.name);
+    if (OFFICE_EXTENSIONS.includes(ext)) return true;
+    return false;
+}
+
+function isPDF(file) {
+    return file.type === 'application/pdf';
+}
+
+async function convertFileToPDF(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/convert', { method: 'POST', body: formData });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: 'Conversion failed' }));
+        throw new Error(err.message || 'Conversion failed');
+    }
+    // Check if the server flagged this as a lossy fallback conversion
+    if (response.headers.get('X-Conversion-Warning') === 'fallback') {
+        showError(`⚠️ ${file.name}: Converted using text extraction (LibreOffice not installed on server). Formatting, tables, and images may be lost. For legally accurate conversion, install LibreOffice or convert to PDF before uploading.`);
+    }
+    const blob = await response.blob();
+    const pdfName = file.name.slice(0, file.name.lastIndexOf('.')) + '.pdf';
+    return new File([blob], pdfName, { type: 'application/pdf' });
+}
+
 async function handleFiles(files) {
     progressContainer.style.display = 'block';
     const totalFiles = files.length;
@@ -77,8 +135,8 @@ async function handleFiles(files) {
     let unsuccessful_uploads = 0;
 
     for (let file of files) {
-        if (file.type !== 'application/pdf') {
-            showError(`${file.name} is not a PDF file`);
+        if (!isSupportedFile(file)) {
+            showError(`${file.name} is not a supported file type`);
             continue;
         }
 
@@ -88,14 +146,23 @@ async function handleFiles(files) {
         }
 
         try {
-            let extension = file.name.slice(file.name.lastIndexOf('.'));
+            let pdfFile = file;
+            let wasConverted = false;
+
+            // Convert non-PDF files to PDF via the server
+            if (!isPDF(file)) {
+                pdfFile = await convertFileToPDF(file);
+                wasConverted = true;
+            }
+
+            let extension = pdfFile.name.slice(pdfFile.name.lastIndexOf('.'));
             let baseName = file.name.slice(0, file.name.lastIndexOf('.'));
             let sanitizedBase = sanitizeFilename(baseName);
             let sanitizedName = baseName + extension;
             filenameMappings.set(file.name, sanitizedName);
-            uploadedFiles.set(file.name, file); // Store the File object
+            uploadedFiles.set(file.name, pdfFile); // Store the (possibly converted) PDF File object
 
-            await processPDFFile(file, sanitizedName, baseName);
+            await processPDFFile(pdfFile, sanitizedName, baseName, wasConverted ? file.name : null);
             processedFiles++;
             progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
             successful_uploads++;
@@ -119,18 +186,19 @@ async function handleFiles(files) {
     }, 1000);
 }
 
-async function processPDFFile(file, sanitizedFileName, originalBasename) {
+async function processPDFFile(file, sanitizedFileName, originalBasename, convertedFrom = null) {
     try {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const pageCount = pdf.numPages;
 
         addFileToList({
-            originalName: file.name,
+            originalName: convertedFrom || file.name,
             sanitizedName: sanitizedFileName,
             title: prettifyTitle(originalBasename),
             date: new Date(file.lastModified).toISOString().split('T')[0],
-            pages: pageCount
+            pages: pageCount,
+            converted: !!convertedFrom
         });
     } catch (error) {
         throw new Error('Failed to process PDF file');
@@ -144,10 +212,11 @@ function addFileToList(fileData) {
     console.log("Parsed result:", parsedResult.date, parsedResult.titleWithoutDate);
     const dateToDisplay = parsedResult.date ? parsedResult.date : fileData.date;
     const titleToDisplay = parsedResult.titleWithoutDate || fileData.title;
+    const convertedBadge = fileData.converted ? ' <span style="background-color: #ef8c51; color: white; padding: 0.1rem 0.3rem; border-radius: 0.2rem; font-size: 0.7rem;">converted</span>' : '';
     
     row.innerHTML = `
         <td><div class="drag-handle"><span style="background-color: #68b3cd; color: white; padding: 0.2rem 0.5rem; border-radius: 0.3rem;">☰</span></div></td>
-        <td data-original-name="${fileData.originalName}">${fileData.sanitizedName}</td>
+        <td data-original-name="${fileData.originalName}">${fileData.sanitizedName}${convertedBadge}</td>
         <td><input type="text" value="${titleToDisplay}" class="w-full"></td>
         <td><input type="text" value="${dateToDisplay}" class="w-full"></td>
         <td>${fileData.pages}</td>
@@ -257,7 +326,7 @@ bundleForm.addEventListener('submit', function (e) {
             const originalName = row.querySelector('td[data-original-name]').dataset.originalName;
             const file = uploadedFiles.get(originalName);
             if (file) {
-                const sanitizedName = filenameMappings.get(file.name);
+                const sanitizedName = filenameMappings.get(originalName);
                 if (sanitizedName) {
                     const sanitizedFile = new File([file], sanitizedName, {
                         type: file.type,
