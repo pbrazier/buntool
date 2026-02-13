@@ -88,17 +88,36 @@ def _complete_google(api_key, model, system_prompt, user_prompt):
         raise RuntimeError("Google GenAI package not installed. Run: pip install google-genai")
 
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=model,
-        contents=f"{system_prompt}\n\n{user_prompt}",
-        config={
-            "response_mime_type": "application/json",
-            "temperature": 0.3,
-        },
-    )
-    content = response.text
-    logger.debug(f"[AI] Google response: {content[:200]}...")
-    return json.loads(content)
+
+    import time
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=f"{system_prompt}\n\n{user_prompt}",
+                config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.3,
+                },
+            )
+            content = response.text
+            logger.debug(f"[AI] Google response: {content[:200]}...")
+            return json.loads(content)
+        except Exception as e:
+            last_error = e
+            if '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e):
+                if 'limit: 0' in str(e):
+                    raise RuntimeError(
+                        "Google Gemini free tier quota is zero for this project. "
+                        "Either create a new API key in a different project at https://aistudio.google.com/apikey, "
+                        "or enable billing on the current project in Google Cloud Console."
+                    )
+                logger.warning(f"[AI] Rate limited, retrying in {2 ** attempt}s (attempt {attempt + 1}/3)")
+                time.sleep(2 ** attempt)
+            else:
+                raise
+    raise last_error
 
 
 def _extract_json(text):

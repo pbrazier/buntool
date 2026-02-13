@@ -84,7 +84,7 @@
 
                 <p>Upload the individual PDFs to be combined into your bundle.</p>
                 <p>Sort your index by clicking the table headings, or drag to reorder in the table.</p>
-                <p>Click the button to add section markers.</p>
+                <p>Click the button to add section markers, or use AI to automatically organise, rename, and sort your files.</p>
                 <p>Check and edit the titles and dates for the index: BunTool will suggest some automatically. </p>
 
                 <div id="dropZone" class="upload-zone" style="display: block;">
@@ -113,11 +113,8 @@
                     </button>
                     </div>
                 <div id="aiButtonGroup" class="button-group" style="padding-top: 0.5rem; display: none;">
-                    <button type="button" class="secondary" id="aiCategoriseBtn" onclick="aiCategorise()" style="background-color: #7c3aed; color: white; border-color: #7c3aed;">
-                        <i class="mdi mdi-brain"></i> AI: Suggest Sections
-                    </button>
-                    <button type="button" class="secondary" id="aiRenameBtn" onclick="aiRename()" style="background-color: #7c3aed; color: white; border-color: #7c3aed;">
-                        <i class="mdi mdi-brain"></i> AI: Suggest Names
+                    <button type="button" class="secondary" id="aiOrganiseBtn" onclick="aiOrganise()" style="background-color: #7c3aed; color: white; border-color: #7c3aed;">
+                        <i class="mdi mdi-brain"></i> AI: Organise Files
                     </button>
                     <span id="aiProviderLabel" style="font-size: 0.75rem; color: #888; align-self: center;"></span>
                 </div>

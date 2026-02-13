@@ -98,7 +98,11 @@ fetch('/capabilities')
                 label.textContent = `Using ${data.ai_provider.provider} (${data.ai_provider.model})`;
             }
         } else {
-            document.getElementById('aiNotConfigured').style.display = 'block';
+            const notice = document.getElementById('aiNotConfigured');
+            notice.style.display = 'block';
+            if (data.ai_message) {
+                notice.innerHTML = `<i class="mdi mdi-alert" style="color: #ef8c51;"></i> ${data.ai_message}`;
+            }
         }
     })
     .catch(() => {
@@ -522,62 +526,87 @@ function parseDateFromFilename(filename, title) {
     return { date: null, titleWithoutDate };
 }
 
-function sortTableByFilename() {
-    // Auto-sort non-section rows by filename (column index 1) ascending
-    const table = document.getElementById('fileList');
-    const rows = Array.from(table.getElementsByTagName('tr'));
-    const sortedRows = rows.sort((a, b) => {
-        if (a.classList.contains('section-row')) return -1;
-        if (b.classList.contains('section-row')) return 1;
-        const aValue = a.getElementsByTagName('td')[1]?.textContent || '';
-        const bValue = b.getElementsByTagName('td')[1]?.textContent || '';
-        return aValue.localeCompare(bValue);
+function hasSections() {
+    return fileList.querySelectorAll('tr.section-row').length > 0;
+}
+
+function getSectionGroups() {
+    // Returns an array of groups: [{section: sectionRow|null, files: [fileRows]}]
+    const rows = Array.from(fileList.children);
+    const groups = [];
+    let current = { section: null, files: [] };
+    rows.forEach(row => {
+        if (row.classList.contains('section-row')) {
+            if (current.section || current.files.length > 0) groups.push(current);
+            current = { section: row, files: [] };
+        } else {
+            current.files.push(row);
+        }
     });
-    sortedRows.forEach(row => table.appendChild(row));
+    if (current.section || current.files.length > 0) groups.push(current);
+    return groups;
+}
+
+function rebuildTableFromGroups(groups) {
+    fileList.innerHTML = '';
+    groups.forEach(group => {
+        if (group.section) fileList.appendChild(group.section);
+        group.files.forEach(row => fileList.appendChild(row));
+    });
+}
+
+function sortTableByFilename() {
+    // If sections exist, sort files within each section; otherwise sort globally
+    if (hasSections()) {
+        const groups = getSectionGroups();
+        groups.forEach(group => {
+            group.files.sort((a, b) => {
+                const aVal = a.getElementsByTagName('td')[1]?.textContent || '';
+                const bVal = b.getElementsByTagName('td')[1]?.textContent || '';
+                return aVal.localeCompare(bVal);
+            });
+        });
+        rebuildTableFromGroups(groups);
+    } else {
+        const rows = Array.from(fileList.getElementsByTagName('tr'));
+        rows.sort((a, b) => {
+            const aVal = a.getElementsByTagName('td')[1]?.textContent || '';
+            const bVal = b.getElementsByTagName('td')[1]?.textContent || '';
+            return aVal.localeCompare(bVal);
+        });
+        rows.forEach(row => fileList.appendChild(row));
+    }
 }
 
 function sortTable(columnIndex) {
-    const table = document.getElementById('fileList');
-    const rows = Array.from(table.getElementsByTagName('tr'));
     const headers = document.querySelectorAll('th.sortable');
-    const currentHeader = headers[columnIndex - 2]; // Adjust for first two non-sortable columns
-    
-    // Determine sort direction
+    const currentHeader = headers[columnIndex - 2];
     const isAsc = !currentHeader.classList.contains('asc');
     
-    // Reset other headers
-    headers.forEach(header => {
-        header.classList.remove('asc', 'desc');
-    });
-    
-    // Set current header sort direction
+    headers.forEach(header => header.classList.remove('asc', 'desc'));
     currentHeader.classList.toggle('asc', isAsc);
     currentHeader.classList.toggle('desc', !isAsc);
 
-    // Sort rows, excluding section rows
-    const sortedRows = rows.sort((a, b) => {
-        // Don't sort section rows
-        if (a.classList.contains('section-row')) return -1;
-        if (b.classList.contains('section-row')) return 1;
-
+    const sortFn = (a, b) => {
         const aValue = a.getElementsByTagName('td')[columnIndex].querySelector('input')?.value || '';
         const bValue = b.getElementsByTagName('td')[columnIndex].querySelector('input')?.value || '';
-
-        if (columnIndex === 3) { // Date column
-            // Parse dates (assuming YYYY-MM-DD format)
+        if (columnIndex === 3) {
             const aDate = aValue ? new Date(aValue) : new Date(0);
             const bDate = bValue ? new Date(bValue) : new Date(0);
             return isAsc ? aDate - bDate : bDate - aDate;
-        } else {
-            // Regular string comparison
-            return isAsc ? 
-                aValue.localeCompare(bValue) : 
-                bValue.localeCompare(aValue);
         }
-    });
+        return isAsc ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+    };
 
-    // Reorder the table
-    sortedRows.forEach(row => table.appendChild(row));
+    if (hasSections()) {
+        const groups = getSectionGroups();
+        groups.forEach(group => group.files.sort(sortFn));
+        rebuildTableFromGroups(groups);
+    } else {
+        const rows = Array.from(fileList.getElementsByTagName('tr'));
+        rows.sort(sortFn);
+        rows.forEach(row => fileList.appendChild(row));
+    }
 }
 
 
@@ -598,32 +627,19 @@ function getFileListForAI() {
     return files;
 }
 
-function setAIButtonsLoading(loading) {
-    const catBtn = document.getElementById('aiCategoriseBtn');
-    const renBtn = document.getElementById('aiRenameBtn');
-    if (loading) {
-        catBtn.disabled = true;
-        renBtn.disabled = true;
-        catBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Thinking...';
-        renBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Thinking...';
-    } else {
-        catBtn.disabled = false;
-        renBtn.disabled = false;
-        catBtn.innerHTML = '<i class="mdi mdi-brain"></i> AI: Suggest Sections';
-        renBtn.innerHTML = '<i class="mdi mdi-brain"></i> AI: Suggest Names';
-    }
-}
-
-async function aiCategorise() {
+async function aiOrganise() {
     const files = getFileListForAI();
     if (files.length === 0) {
-        showError('Upload some files first before using AI categorisation.');
+        showError('Upload some files first before using AI organisation.');
         return;
     }
 
-    setAIButtonsLoading(true);
+    const btn = document.getElementById('aiOrganiseBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Organising...';
+
     try {
-        const response = await fetch('/ai/categorise', {
+        const response = await fetch('/ai/organise', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ files: files })
@@ -632,22 +648,20 @@ async function aiCategorise() {
         if (result.status !== 'success') {
             throw new Error(result.message || 'AI request failed');
         }
-        applyAISections(result.data);
-        showMessage('AI section suggestions applied. Review and adjust as needed.');
+        applyAIOrganisation(result.data);
+        showMessage('AI organisation applied — files categorised, renamed, and sorted. Review and adjust as needed.');
     } catch (error) {
-        showError(`AI categorisation failed: ${error.message}`);
+        showError(`AI organisation failed: ${error.message}`);
     } finally {
-        setAIButtonsLoading(false);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="mdi mdi-brain"></i> AI: Organise Files';
     }
 }
 
-function applyAISections(data) {
+function applyAIOrganisation(data) {
     if (!data || !data.sections) return;
 
-    // Remove existing section rows
-    fileList.querySelectorAll('tr.section-row').forEach(row => row.remove());
-
-    // Collect all file rows into a lookup by sanitized filename
+    // Build lookup from sanitized filename to row element
     const fileRows = {};
     fileList.querySelectorAll('tr:not(.section-row)').forEach(row => {
         const originalName = row.querySelector('td[data-original-name]')?.dataset.originalName;
@@ -655,12 +669,15 @@ function applyAISections(data) {
         if (sanitizedName) fileRows[sanitizedName] = row;
     });
 
-    // Clear the table and rebuild in section order
+    // Clear table and rebuild
     fileList.innerHTML = '';
     const placed = new Set();
 
     data.sections.forEach(section => {
-        // Add section header row
+        // Skip empty sections
+        if (!section.files || section.files.length === 0) return;
+
+        // Add section header
         const sectionRow = document.createElement('tr');
         sectionRow.className = 'section-row';
         sectionRow.innerHTML = `
@@ -670,68 +687,24 @@ function applyAISections(data) {
         `;
         fileList.appendChild(sectionRow);
 
-        // Add file rows for this section
-        (section.files || []).forEach(filename => {
+        // Add files in the order the AI returned (already sorted)
+        (section.files || []).forEach(fileInfo => {
+            const filename = fileInfo.original || fileInfo;
             const row = fileRows[filename];
             if (row) {
+                // Apply the suggested title if provided
+                if (fileInfo.title) {
+                    const titleInput = row.querySelectorAll('td')[2]?.querySelector('input');
+                    if (titleInput) titleInput.value = fileInfo.title;
+                }
                 fileList.appendChild(row);
                 placed.add(filename);
             }
         });
     });
 
-    // Append any files that weren't placed by the AI
+    // Append any files the AI missed
     Object.entries(fileRows).forEach(([name, row]) => {
-        if (!placed.has(name)) {
-            fileList.appendChild(row);
-        }
-    });
-}
-
-async function aiRename() {
-    const files = getFileListForAI();
-    if (files.length === 0) {
-        showError('Upload some files first before using AI renaming.');
-        return;
-    }
-
-    setAIButtonsLoading(true);
-    try {
-        const response = await fetch('/ai/rename', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: files })
-        });
-        const result = await response.json();
-        if (result.status !== 'success') {
-            throw new Error(result.message || 'AI request failed');
-        }
-        applyAIRenames(result.data);
-        showMessage('AI name suggestions applied to title fields. Review and adjust as needed.');
-    } catch (error) {
-        showError(`AI rename failed: ${error.message}`);
-    } finally {
-        setAIButtonsLoading(false);
-    }
-}
-
-function applyAIRenames(data) {
-    if (!data || !data.suggestions) return;
-
-    // Build a lookup from original filename to suggested name
-    const suggestions = {};
-    data.suggestions.forEach(s => {
-        suggestions[s.original] = s.suggested;
-    });
-
-    // Apply to table rows
-    fileList.querySelectorAll('tr:not(.section-row)').forEach(row => {
-        const originalName = row.querySelector('td[data-original-name]')?.dataset.originalName;
-        const sanitizedName = filenameMappings.get(originalName) || originalName;
-        const suggested = suggestions[sanitizedName];
-        if (suggested) {
-            const titleInput = row.querySelectorAll('td')[2]?.querySelector('input');
-            if (titleInput) titleInput.value = suggested;
-        }
+        if (!placed.has(name)) fileList.appendChild(row);
     });
 }

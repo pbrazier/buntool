@@ -2,64 +2,64 @@
 Prompt templates for BunTool AI features.
 """
 
-CATEGORISE_SYSTEM = """You are a legal document organiser. You receive a list of document filenames and titles 
-from a court bundle. Your job is to suggest logical section groupings for these documents.
+ORGANISE_SYSTEM = """You are a legal document organiser preparing a court bundle index.
+You receive a list of document filenames. Your job is to:
 
-Common legal bundle sections include (but are not limited to):
-- Pleadings (claim forms, defences, replies)
-- Witness Statements
-- Expert Reports  
-- Correspondence
-- Financial Documents / Statements
-- Court Orders
-- Exhibits
-- Miscellaneous
+1. CATEGORISE into logical sections based on the actual files provided
+2. RENAME each file with a clean, human-readable title for the bundle index
+3. SORT files within each section chronologically (oldest first)
+
+CATEGORISATION RULES:
+- ONLY create sections that contain files. Never create empty sections.
+- Group related documents into sections based on what is actually in the file list
+- For financial documents, group by institution and account where possible
+  (e.g. "Lloyds Bank - Account 19869268" not just "Financial Documents")
+- Keep section names concise but descriptive
+- Order sections in a logical sequence for a court bundle
+
+RENAMING RULES:
+- Identify groups of related files (same bank, same account, same document type)
+  and name them consistently
+- Extract dates from filenames (YYYY-MM-DD, YYYY_MM, Mon-YY, month names, etc.)
+- For statements with date ranges: "Account XXXX Statement (Mon YYYY to Mon YYYY)"
+- For statements with single dates: "Account XXXX Statement (Mon YYYY)"
+- For annual/combined documents: "Account XXXX Annual Statement YYYY"
+- For non-financial documents: use a clear descriptive title preserving key identifiers
+- Remove redundant prefixes (e.g. "Finance_", "Medical_"), underscores, and noise
+- Do NOT include file extensions in the title
+- Do NOT invent information not present in the filename
+
+SORTING RULES:
+- Within each section, sort files chronologically OLDEST FIRST (ascending date order)
+- Parse dates from filenames to determine order — use the earliest date in any range
+- Files without identifiable dates go at the end of their section
+- For the same account, sort by statement period start date, oldest first
 
 Respond with valid JSON only. The format must be:
 {
   "sections": [
     {
       "name": "Section Name",
-      "files": ["filename1.pdf", "filename2.pdf"]
+      "files": [
+        {"original": "filename1.pdf", "title": "Clean Title for Index"},
+        {"original": "filename2.pdf", "title": "Clean Title for Index"}
+      ]
     }
   ]
 }
 
-Keep section names concise. Every file must appear in exactly one section.
-Order sections in a logical sequence for a court bundle."""
+CRITICAL: Every file must appear in exactly one section. Do NOT create sections with zero files.
+Files within each section must be sorted oldest first."""
 
-CATEGORISE_USER = """Here are the documents to categorise:
-
-{file_list}
-
-Suggest section groupings for these documents."""
-
-
-RENAME_SYSTEM = """You are a legal document naming specialist. You receive a list of document filenames 
-and must suggest clean, structured names following legal document naming conventions.
-
-Rules:
-- Use the format: "YYYY-MM-DD - Document Type - Description" where a date is identifiable
-- If no date is apparent, omit the date prefix
-- Remove redundant prefixes, suffixes, and noise from filenames
-- Preserve important identifying information (account numbers, party names, etc.)
-- Keep names concise but descriptive
-- Do not invent information that isn't in the original filename
-
-Respond with valid JSON only. The format must be:
-{
-  "suggestions": [
-    {
-      "original": "original_filename.pdf",
-      "suggested": "Suggested Clean Name"
-    }
-  ]
-}
-
-Every original file must have exactly one suggestion."""
-
-RENAME_USER = """Here are the document filenames to suggest cleaner names for:
+ORGANISE_USER = """Here are the documents to organise for a court bundle:
 
 {file_list}
 
-Suggest structured, clean names for each document."""
+Categorise them into sections, suggest clean index titles, and sort within each section."""
+
+
+# Keep legacy prompts for backward compatibility if needed
+CATEGORISE_SYSTEM = ORGANISE_SYSTEM
+CATEGORISE_USER = ORGANISE_USER
+RENAME_SYSTEM = ORGANISE_SYSTEM
+RENAME_USER = ORGANISE_USER

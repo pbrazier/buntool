@@ -35,17 +35,48 @@ def _load_config():
         defaults = {
             'openai': 'gpt-4o-mini',
             'anthropic': 'claude-sonnet-4-20250514',
-            'google': 'gemini-2.0-flash',
+            'google': 'gemini-2.5-flash-lite',
         }
         config['model'] = defaults.get(config['provider'], '')
 
     return config
 
 
-def is_ai_configured():
-    """Check if AI features are available."""
+PROVIDER_PACKAGES = {
+    'openai': ('openai', 'pip install openai'),
+    'anthropic': ('anthropic', 'pip install anthropic'),
+    'google': ('google.genai', 'pip install google-genai'),
+}
+
+
+def check_ai_package():
+    """Check if the required package for the configured provider is installed.
+    Returns (ok: bool, message: str)."""
     config = _load_config()
-    return bool(config.get('provider') and config.get('api_key'))
+    provider = config.get('provider', '')
+    if not provider or not config.get('api_key'):
+        return True, ""  # Not configured — nothing to check
+
+    pkg_info = PROVIDER_PACKAGES.get(provider)
+    if not pkg_info:
+        return False, f"Unknown AI provider '{provider}'. Valid options: openai, anthropic, google"
+
+    import_name, install_cmd = pkg_info
+    try:
+        __import__(import_name)
+        return True, ""
+    except ImportError:
+        return False, (f"AI provider '{provider}' is configured but the required package is not installed. "
+                       f"Run: {install_cmd}")
+
+
+def is_ai_configured():
+    """Check if AI features are available and the package is installed."""
+    config = _load_config()
+    if not (config.get('provider') and config.get('api_key')):
+        return False
+    ok, _ = check_ai_package()
+    return ok
 
 
 def get_ai_provider_info():
