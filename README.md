@@ -112,11 +112,17 @@ BunTool detects LibreOffice automatically at startup. If it is not found, a warn
 
 ### AI Features (Optional)
 
-BunTool has optional AI-powered features that can suggest section groupings and clean document names for your bundle. These require an API key from one of the supported providers:
+BunTool has optional AI-powered organisation that can categorise, rename, and sort your uploaded files in a single click. When you press "AI: Organise Files" in Step 2, the AI will:
+
+- **Categorise** files into logical sections (e.g. by institution, account, document type)
+- **Rename** titles to clean, human-readable index entries with dates extracted from filenames
+- **Sort** files within each section chronologically (oldest first)
+
+This requires an API key from one of the supported providers:
 
 | Provider | Package | Free Tier | Notes |
 |----------|---------|-----------|-------|
-| **Google Gemini** | `google-genai` | Yes — generous free tier | Recommended for trying out AI features at no cost |
+| **Google Gemini** | `google-genai` | Yes (with billing enabled) | Recommended — cheapest option, default model `gemini-2.5-flash-lite` |
 | **OpenAI** | `openai` | No | GPT-4o-mini is fast and affordable |
 | **Anthropic** | `anthropic` | No | Claude Sonnet for high-quality suggestions |
 
@@ -142,16 +148,37 @@ BunTool has optional AI-powered features that can suggest section groupings and 
    ```
    Valid providers: `openai`, `anthropic`, `google`. Leave `model` empty to use the default for each provider.
 
-4. Restart the server. You should see `AI features enabled: google (gemini-2.0-flash)` in the terminal.
+4. Restart the server. You should see `AI features enabled: google (gemini-2.5-flash-lite)` in the terminal.
 
-The AI buttons appear in Step 2 when configured. If AI is not configured, the tool works exactly as before — no functionality is lost.
+The "AI: Organise Files" button appears in Step 2 when configured. If AI is not configured, the tool works exactly as before — no functionality is lost. If the required Python package is missing, a clear warning is shown at startup and in the browser.
 
 You can also configure via environment variables instead of the config file:
 ```bash
 export BUNTOOL_AI_PROVIDER=google
 export BUNTOOL_AI_API_KEY=your-key-here
-export BUNTOOL_AI_MODEL=gemini-2.0-flash
+export BUNTOOL_AI_MODEL=gemini-2.5-flash-lite
 ```
+
+#### Getting an API Key
+
+**Google Gemini (recommended):**
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key" — create a dedicated project (e.g. "buntool") for clean usage tracking
+4. Copy the key into your `ai_config.json`
+5. Enable billing on the project in [Google Cloud Console](https://console.cloud.google.com) — the free tier quota may be zero without it. Gemini Flash Lite costs ~$0.10 per million input tokens, so typical BunTool usage is essentially free
+
+**OpenAI:**
+1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. Sign in or create an account
+3. Click "Create new secret key", give it a name, and copy it
+4. You will need to add credit to your account — API usage is pay-as-you-go (separate from a ChatGPT subscription)
+
+**Anthropic:**
+1. Go to [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+2. Sign in or create an account
+3. Click "Create Key", give it a name, and copy it
+4. You will need to add credit to your account — API usage is pay-as-you-go (separate from a Claude subscription)
 
 ### Installation Steps
 
