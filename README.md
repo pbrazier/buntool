@@ -6,6 +6,31 @@
 
 **Automatically create professional court bundles in seconds.**
 
+## Quick Start
+
+To start the application:
+
+```bash
+# Using the start script (recommended - validates everything):
+./start.sh
+
+# Or manually:
+source .venv/bin/activate  # Activate virtual environment
+python app.py              # Run the app
+```
+
+The server runs on http://127.0.0.1:7001
+
+The start script automatically:
+- Validates Python version (3.8+)
+- Creates/checks virtual environment
+- Installs missing dependencies
+- Installs Charter fonts if needed
+- Checks port availability
+- Starts the server
+
+See the Installation and Setup section below for first-time setup instructions.
+
 BunTool is a web-based application designed to streamline the creation of court bundles for the English legal system. It takes multiple PDF files and combines them into a single, professionally formatted bundle with automatic indexing, pagination, hyperlinks, and bookmarks.
 
 🔗 **Live Instance:** [buntool.co.uk](https://buntool.co.uk)
