@@ -26,7 +26,9 @@ new Sortable(fileList, {
 });
 
 // Event Listeners
-dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click', (e) => {
+    if (e.target !== fileInput) fileInput.click();
+});
 
 dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
