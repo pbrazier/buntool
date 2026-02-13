@@ -24,3 +24,4 @@ After completing any of the following, ask the user if they'd like to commit:
 - If multiple logical changes have been made since the last commit, suggest breaking them into separate commits if practical.
 - Stage all related files together. Don't leave half a feature uncommitted.
 - Don't commit generated files, temp files, or `.DS_Store`.
+- Don't commit `TODO.md` — that's user-managed and changes frequently. Leave it unstaged.
