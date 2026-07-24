@@ -219,9 +219,9 @@
                                             <option value="MM-DD-YYYY" >12/31/2025 (MM/DD/YYYY)</option>
                                             <option value="uk_longdate" >31 December 2025 (UK Longform)</option>
                                             <option value="us_longdate" >December 31, 2025 (US Longform)</option>
-                                            <option value="uk_abbreviated_date" selected>31 Dec 2025 (UK Abbreviated)(default)</option>
+                                            <option value="uk_abbreviated_date">31 Dec 2025 (UK Abbreviated)</option>
                                             <option value="us_abbreviated_date" >Dec 31 2025 (US Abbreviated)</option>
-                                            <option value="hide_date">None (Don't include date in index)</option>
+                                            <option value="hide_date" selected>None (Don't include date in index)(default)</option>
                                         </select>
                                     </td>
                                 </tr>
@@ -231,9 +231,9 @@
                                     </td>
                                     <td style="width: 67%;">
                                         <select class="form-control" id="bookmark_setting" name="bookmark_setting">
-                                            <option value="tab-title" selected>001. Document title (default)</option>
+                                            <option value="tab-title">001. Document title</option>
                                             <option value="tab-title-date" >001. Document Title (date)</option>
-                                            <option value="tab-title-page" >001. Document Title [pg.1]</option>
+                                            <option value="tab-title-page" selected>001. Document Title [pg.1] (default)</option>
                                             <option value="tab-title-date-page" >001. Document Title (date)[pg.1]</option>
                                         </select>
                                     </td>
@@ -325,9 +325,9 @@
                                     <td>
                                         <select class="form-control" id="page_num_style" name="page_num_style">
                                             <option value="x">Number only: [X] e.g. '1'</option>
-                                            <option value="x_of_y">Numbers only: [X] of [Y] e.g. '1 of 100'</option>
+                                            <option value="x_of_y" selected>Numbers only: [X] of [Y] e.g. '1 of 100' (default)</option>
                                             <option value="x_slash_y">Numbers with slash: [X]/[Y] e.g. '1/100'</option>
-                                            <option value="page_x" selected>Page [X] e.g. 'Page 1' (default)</option>
+                                            <option value="page_x">Page [X] e.g. 'Page 1'</option>
                                             <option value="page_x_of_y">Page [X] of [Y] e.g. 'Page 1 of 100'</option>
                                         </select>
                                     </td>
@@ -350,7 +350,7 @@
                                     </td>
                                     <td>
                                         <input type="checkbox" class="form-check-input" id="header_filename"
-                                            name="header_filename" value="true">
+                                            name="header_filename" value="true" checked>
                                         <label class="form-check-label" for="header_filename"
                                             style="display: inline;">Add the document title as a header on each page</label>
                                     </td>
