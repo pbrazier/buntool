@@ -16,7 +16,7 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # file size limit in MB
 app.logger.setLevel(logging.DEBUG)
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 
 # s3 = boto3.client('s3')
 # bucket_name = os.environ.get('s3_bucket', 'your-default-bucket')
