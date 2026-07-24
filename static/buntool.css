@@ -185,6 +185,30 @@ th {
     border-left: 3px solid var(--accent);
 }
 
+.folder-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+}
+
+.folder-context {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background: rgba(104, 179, 205, 0.12);
+    border-left: 3px solid #68b3cd;
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.subfolder-hint {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    margin-top: 0.2rem;
+}
+
 
 .flash {
     background: linear-gradient(to right, #ff5c9b, transparent);

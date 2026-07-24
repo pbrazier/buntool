@@ -4,6 +4,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 // Initialize variables
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
+const folderInput = document.getElementById('folderInput');
+const selectFolderButton = document.getElementById('selectFolderButton');
+const folderContext = document.getElementById('folderContext');
 const fileList = document.getElementById('fileList');
 const progressBar = document.querySelector('.progress-bar');
 const progressContainer = document.querySelector('.progress-container');
@@ -39,14 +42,34 @@ dropZone.addEventListener('dragleave', () => {
     dropZone.classList.remove('dragover');
 });
 
-dropZone.addEventListener('drop', (e) => {
+dropZone.addEventListener('drop', async (e) => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
-    handleFiles(e.dataTransfer.files);
+    // If the browser exposes filesystem entries, we can detect and recurse
+    // into dropped folders. Otherwise fall back to the flat file list.
+    if (e.dataTransfer.items && e.dataTransfer.items.length && e.dataTransfer.items[0].webkitGetAsEntry) {
+        const { files, sawDirectory } = await getFilesFromDataTransferItems(e.dataTransfer.items);
+        if (files.length) handleFiles(files, sawDirectory);
+    } else {
+        handleFiles(e.dataTransfer.files);
+    }
 });
 
 fileInput.addEventListener('change', (e) => {
     handleFiles(e.target.files);
+});
+
+// Folder selection: open the directory picker and import everything inside it.
+selectFolderButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    folderInput.click();
+});
+
+folderInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files, true);
+    // Reset so selecting the same folder again re-triggers the change event.
+    folderInput.value = '';
 });
 
 
@@ -69,6 +92,98 @@ function getUniqueFilename(basename, extension, usedNames) {
         suffix++;
     }
     return candidate;
+}
+
+// Returns a path relative to the chosen folder when available (folder uploads),
+// otherwise just the plain filename.
+function getRelativePath(file) {
+    return file._relPath || file.webkitRelativePath || file.name;
+}
+
+// The subfolder portion of a relative path (everything except the filename).
+// e.g. "form-e-bundle/pleadings/statement.pdf" -> "form-e-bundle/pleadings"
+function getSubfolderPath(relativePath) {
+    const idx = relativePath.lastIndexOf('/');
+    return idx === -1 ? '' : relativePath.slice(0, idx);
+}
+
+// Turn a folder name into a friendly title, e.g. "form-e-bundle" -> "Form E Bundle".
+function prettifyFolderName(name) {
+    return name
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Capture the top-level folder name from a folder upload and use it as context:
+// display it, and pre-fill the bundle title if the user hasn't set one yet.
+function captureFolderContext(fileArray) {
+    const withPath = fileArray.find(f => getRelativePath(f).includes('/'));
+    if (!withPath) return;
+    const topFolder = getRelativePath(withPath).split('/')[0];
+    if (!topFolder) return;
+
+    if (folderContext) {
+        folderContext.style.display = 'block';
+        folderContext.innerHTML = `<i class="mdi mdi-folder"></i> Imported from folder: <b>${topFolder}</b>`;
+    }
+
+    const titleInput = document.getElementById('bundle_title');
+    if (titleInput && !titleInput.value.trim()) {
+        titleInput.value = prettifyFolderName(topFolder);
+    }
+}
+
+// Recursively collect File objects from dropped filesystem entries so that
+// dropping a folder pulls in everything inside it (subfolders included).
+async function getFilesFromDataTransferItems(items) {
+    const entries = [];
+    let sawDirectory = false;
+    for (const item of items) {
+        const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
+        if (entry) {
+            if (entry.isDirectory) sawDirectory = true;
+            entries.push(entry);
+        }
+    }
+    const files = [];
+    for (const entry of entries) {
+        await traverseEntry(entry, files);
+    }
+    return { files, sawDirectory };
+}
+
+function traverseEntry(entry, files, pathPrefix = '') {
+    return new Promise((resolve) => {
+        if (entry.isFile) {
+            entry.file(file => {
+                // Preserve the relative path for context (folders are dropped without webkitRelativePath).
+                file._relPath = pathPrefix + entry.name;
+                files.push(file);
+                resolve();
+            }, () => resolve());
+        } else if (entry.isDirectory) {
+            const reader = entry.createReader();
+            const collected = [];
+            const readBatch = () => {
+                reader.readEntries(async (batch) => {
+                    if (!batch.length) {
+                        for (const child of collected) {
+                            await traverseEntry(child, files, pathPrefix + entry.name + '/');
+                        }
+                        resolve();
+                    } else {
+                        collected.push(...batch);
+                        readBatch();
+                    }
+                }, () => resolve());
+            };
+            readBatch();
+        } else {
+            resolve();
+        }
+    });
 }
 
 // Supported file types (defaults — updated dynamically from server capabilities)
@@ -129,21 +244,47 @@ async function convertFileToPDF(file) {
     return new File([blob], pdfName, { type: 'application/pdf' });
 }
 
-async function handleFiles(files) {
+async function handleFiles(files, fromFolder = false) {
     progressContainer.style.display = 'block';
-    const totalFiles = files.length;
+    const fileArray = Array.from(files);
+    const totalFiles = fileArray.length;
     let processedFiles = 0;
     let successful_uploads = 0;
     let unsuccessful_uploads = 0;
+    let skipped_unsupported = 0;
 
-    for (let file of files) {
+    // For folder imports, capture the containing folder name as context.
+    if (fromFolder) {
+        captureFolderContext(fileArray);
+    }
+
+    for (let file of fileArray) {
+        // Folder uploads carry a relative path; use it as a unique key so that
+        // identically-named files in different subfolders don't collide.
+        const relativePath = getRelativePath(file);
+        const fileKey = relativePath;
+
         if (!isSupportedFile(file)) {
-            showError(`${file.name} is not a supported file type`);
+            // A folder legitimately contains junk (.DS_Store, notes, etc.). Skip it
+            // quietly rather than raising an error for every unsupported file.
+            if (fromFolder) {
+                skipped_unsupported++;
+            } else {
+                showError(`${file.name} is not a supported file type`);
+            }
+            processedFiles++;
+            progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
             continue;
         }
 
-        if (uploadedFiles.has(file.name)) {
-            showDuplicateModal(file.name);
+        if (uploadedFiles.has(fileKey)) {
+            // Only warn on true duplicates for manual picks; folders may legitimately
+            // re-run over already-imported paths.
+            if (!fromFolder) {
+                showDuplicateModal(file.name);
+            }
+            processedFiles++;
+            progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
             continue;
         }
 
@@ -159,18 +300,23 @@ async function handleFiles(files) {
 
             let extension = pdfFile.name.slice(pdfFile.name.lastIndexOf('.'));
             let baseName = file.name.slice(0, file.name.lastIndexOf('.'));
-            let sanitizedBase = sanitizeFilename(baseName);
-            let sanitizedName = baseName + extension;
-            filenameMappings.set(file.name, sanitizedName);
-            uploadedFiles.set(file.name, pdfFile); // Store the (possibly converted) PDF File object
+            // Ensure the stored filename is unique across the whole batch, including
+            // files pulled in from different subfolders, so nothing is overwritten
+            // or silently lost when the bundle is assembled server-side.
+            let sanitizedName = getUniqueFilename(baseName, extension, filenameMappings);
+            filenameMappings.set(fileKey, sanitizedName);
+            uploadedFiles.set(fileKey, pdfFile); // Store the (possibly converted) PDF File object
 
-            await processPDFFile(pdfFile, sanitizedName, baseName, wasConverted ? file.name : null);
+            const subfolder = getSubfolderPath(relativePath);
+            await processPDFFile(pdfFile, sanitizedName, baseName, wasConverted ? file.name : null, fileKey, subfolder);
             processedFiles++;
             progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
             successful_uploads++;
         } catch (error) {
             showError(`Error processing ${file.name}: ${error.message}`);
             unsuccessful_uploads++;
+            processedFiles++;
+            progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
         }
     }
 
@@ -181,6 +327,8 @@ async function handleFiles(files) {
     }
     if (unsuccessful_uploads > 0)
         showError(`${unsuccessful_uploads} files failed to upload.`);
+    if (fromFolder && skipped_unsupported > 0)
+        showMessage(`${skipped_unsupported} unsupported file(s) in the folder were skipped.`);
 
     setTimeout(() => {
         progressContainer.style.display = 'none';
@@ -188,19 +336,20 @@ async function handleFiles(files) {
     }, 1000);
 }
 
-async function processPDFFile(file, sanitizedFileName, originalBasename, convertedFrom = null) {
+async function processPDFFile(file, sanitizedFileName, originalBasename, convertedFrom = null, fileKey = null, subfolder = '') {
     try {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const pageCount = pdf.numPages;
 
         addFileToList({
-            originalName: convertedFrom || file.name,
+            originalName: fileKey || convertedFrom || file.name,
             sanitizedName: sanitizedFileName,
             title: prettifyTitle(originalBasename),
             date: new Date(file.lastModified).toISOString().split('T')[0],
             pages: pageCount,
-            converted: !!convertedFrom
+            converted: !!convertedFrom,
+            subfolder: subfolder
         });
     } catch (error) {
         throw new Error('Failed to process PDF file');
@@ -215,22 +364,38 @@ function addFileToList(fileData) {
     const dateToDisplay = parsedResult.date ? parsedResult.date : fileData.date;
     const titleToDisplay = parsedResult.titleWithoutDate || fileData.title;
     const convertedBadge = fileData.converted ? ' <span style="background-color: #ef8c51; color: white; padding: 0.1rem 0.3rem; border-radius: 0.2rem; font-size: 0.7rem;">converted</span>' : '';
-    
+    const subfolderHint = fileData.subfolder ? `<div class="subfolder-hint" title="Source folder"><i class="mdi mdi-folder-outline"></i> ${escapeHtml(fileData.subfolder)}</div>` : '';
+
     row.innerHTML = `
         <td><div class="drag-handle"><span style="background-color: #68b3cd; color: white; padding: 0.2rem 0.5rem; border-radius: 0.3rem;">☰</span></div></td>
-        <td data-original-name="${fileData.originalName}">${fileData.sanitizedName}${convertedBadge}</td>
+        <td data-original-name="${escapeHtml(fileData.originalName)}">${fileData.sanitizedName}${convertedBadge}${subfolderHint}</td>
         <td><input type="text" value="${titleToDisplay}" class="w-full"></td>
         <td><input type="text" value="${dateToDisplay}" class="w-full"></td>
         <td>${fileData.pages}</td>
-        <td><button type="button" class="remove-button" onclick="removeFile(this, '${fileData.originalName}')">❌</button></td>
+        <td><button type="button" class="remove-button" onclick="removeFile(this)">❌</button></td>
     `;
     fileList.appendChild(row);
 }
 
-function removeFile(button, originalName) {
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function removeFile(button) {
     const row = button.closest('tr');
+    const cell = row.querySelector('td[data-original-name]');
+    const originalName = cell ? cell.getAttribute('data-original-name') : null;
     row.remove();
-    uploadedFiles.delete(originalName);
+    if (originalName) {
+        uploadedFiles.delete(originalName);
+        filenameMappings.delete(originalName);
+    }
     console.log(`Removed file: ${originalName}`);
 }
 
