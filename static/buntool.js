@@ -192,18 +192,23 @@ const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/bmp', 'image
 let OFFICE_EXTENSIONS = []; // Populated from server if LibreOffice is available
 
 // Check server capabilities on load
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp'];
+
 fetch('/capabilities')
     .then(r => r.json())
     .then(data => {
         const formatsText = document.getElementById('supportedFormatsText');
+        const serverExts = data.supported_extensions || [];
+        // Anything the server supports that isn't a PDF or an image is an
+        // office format (Word docs / spreadsheets) handled via LibreOffice.
+        OFFICE_EXTENSIONS = serverExts.filter(e => e !== '.pdf' && !IMAGE_EXTENSIONS.includes(e));
+        fileInput.accept = serverExts.length
+            ? serverExts.join(',')
+            : '.pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp';
         if (data.libreoffice_available) {
-            OFFICE_EXTENSIONS = ['.docx'];
-            fileInput.accept = '.pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp,.docx';
-            formatsText.textContent = 'Supports PDF, images (PNG, JPG, GIF, BMP, TIFF, WEBP) and Word documents (DOCX). Non-PDF files will be converted automatically.';
+            formatsText.textContent = 'Supports PDF, images (PNG, JPG, GIF, BMP, TIFF, WEBP), Word documents (DOCX) and spreadsheets (XLSX, XLS, ODS). Non-PDF files will be converted automatically.';
         } else {
-            OFFICE_EXTENSIONS = [];
-            fileInput.accept = '.pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp';
-            formatsText.textContent = 'Supports PDF and images (PNG, JPG, GIF, BMP, TIFF, WEBP). Word documents require LibreOffice on the server.';
+            formatsText.textContent = 'Supports PDF and images (PNG, JPG, GIF, BMP, TIFF, WEBP). Word documents and spreadsheets require LibreOffice on the server.';
         }
     })
     .catch(() => {

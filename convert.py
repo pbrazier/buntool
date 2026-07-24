@@ -16,7 +16,18 @@ logger = logging.getLogger('bundle_logger')
 
 # Supported file types
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp'}
-OFFICE_EXTENSIONS = {'.docx'}
+# Word-processor documents converted via LibreOffice.
+DOCUMENT_EXTENSIONS = {'.docx', '.doc', '.odt', '.rtf'}
+# Spreadsheets converted via LibreOffice. These carry their own print/page setup,
+# so LibreOffice's PDF export reproduces them exactly as they would print.
+SPREADSHEET_EXTENSIONS = {'.xlsx', '.xls', '.ods'}
+# All formats that depend on LibreOffice for faithful, print-quality conversion.
+# Deliberately excludes plain .csv: importing a CSV lets LibreOffice guess
+# delimiters, encodings and cell types, which can silently coerce values
+# (leading zeros dropped, text turned into dates, long numbers shown in
+# scientific notation). That risks altering the meaning of the data, so it is
+# not a legally defensible reproduction. Save as .xlsx/.ods for conversion.
+OFFICE_EXTENSIONS = DOCUMENT_EXTENSIONS | SPREADSHEET_EXTENSIONS
 SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | OFFICE_EXTENSIONS | {'.pdf'}
 
 
@@ -118,45 +129,48 @@ def convert_image_to_pdf(image_path, output_pdf_path):
         raise
 
 
-def convert_docx_to_pdf(docx_path, output_pdf_path):
-    """Convert a DOCX file to PDF. Uses LibreOffice for faithful conversion, falls back to text extraction."""
-    if LIBREOFFICE_PATH:
-        return _convert_docx_libreoffice(docx_path, output_pdf_path)
-    else:
-        logger.warning("LibreOffice not available — using text-extraction fallback for DOCX. "
-                        "Output may not faithfully represent the original document.")
-        return _convert_docx_reportlab(docx_path, output_pdf_path)
+def convert_office_to_pdf(input_path, output_pdf_path):
+    """
+    Convert an office document (Word processor doc or spreadsheet) to PDF using
+    LibreOffice headless mode. This is faithful and print-quality — LibreOffice
+    reproduces the file exactly as it would print, honouring each sheet's own
+    page setup and print area.
 
-
-def _convert_docx_libreoffice(docx_path, output_pdf_path):
-    """Convert DOCX to PDF using LibreOffice headless mode (faithful, print-quality)."""
+    There is no fallback. If LibreOffice is not installed, conversion is refused
+    rather than silently producing a degraded reproduction.
+    """
+    if not LIBREOFFICE_PATH:
+        raise RuntimeError(
+            "Office document conversion is not available. LibreOffice is required for "
+            "faithful conversion. Install it with: brew install --cask libreoffice"
+        )
     try:
         output_dir = os.path.dirname(output_pdf_path)
         result = subprocess.run(
-            [LIBREOFFICE_PATH, '--headless', '--convert-to', 'pdf', '--outdir', output_dir, docx_path],
+            [LIBREOFFICE_PATH, '--headless', '--convert-to', 'pdf', '--outdir', output_dir, input_path],
             capture_output=True, text=True, timeout=120
         )
         if result.returncode != 0:
             raise RuntimeError(f"LibreOffice conversion failed: {result.stderr}")
 
         # LibreOffice names the output based on the input filename
-        lo_output = os.path.join(output_dir, os.path.splitext(os.path.basename(docx_path))[0] + '.pdf')
+        lo_output = os.path.join(output_dir, os.path.splitext(os.path.basename(input_path))[0] + '.pdf')
+        if not os.path.exists(lo_output):
+            raise RuntimeError(f"LibreOffice did not produce expected output: {lo_output}")
         if lo_output != output_pdf_path:
             os.rename(lo_output, output_pdf_path)
 
-        logger.info(f"Converted DOCX to PDF via LibreOffice: {docx_path} -> {output_pdf_path}")
+        logger.info(f"Converted office document to PDF via LibreOffice: {input_path} -> {output_pdf_path}")
         return output_pdf_path
     except Exception as e:
-        logger.error(f"LibreOffice conversion error for {docx_path}: {str(e)}")
+        logger.error(f"LibreOffice conversion error for {input_path}: {str(e)}")
         raise
 
 
-def _convert_docx_reportlab(docx_path, output_pdf_path):
-    """This fallback is disabled. DOCX conversion requires LibreOffice for legal fidelity."""
-    raise RuntimeError(
-        "DOCX conversion is not available. LibreOffice is required for faithful document conversion. "
-        "Install it with: brew install --cask libreoffice"
-    )
+# Backwards-compatible alias — DOCX conversion is just an office conversion.
+def convert_docx_to_pdf(docx_path, output_pdf_path):
+    """Convert a DOCX file to PDF via LibreOffice (faithful, print-quality)."""
+    return convert_office_to_pdf(docx_path, output_pdf_path)
 
 
 def convert_to_pdf(input_path, output_dir):
@@ -174,6 +188,6 @@ def convert_to_pdf(input_path, output_dir):
     if ext in IMAGE_EXTENSIONS:
         return convert_image_to_pdf(input_path, output_pdf_path)
     elif ext in OFFICE_EXTENSIONS:
-        return convert_docx_to_pdf(input_path, output_pdf_path)
+        return convert_office_to_pdf(input_path, output_pdf_path)
     else:
         raise ValueError(f"Unsupported file type: {ext}")
